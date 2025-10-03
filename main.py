@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 bot = telebot.TeleBot(os.environ['BOT_TOKEN'])
 app = Flask(__name__)
 
-# Пригласительная ссылка на канал
-CHANNEL_INVITE_LINK = "https://t.me/+_58D1Ea_0WxjZTYy"
+# ID канала (должен начинаться с -100)
+CHANNEL_ID = os.environ.get('CHANNEL_ID', '-1001234567890')  # Замените на реальный ID
 
 # Инициализация базы данных
 def init_db():
@@ -44,26 +44,17 @@ def send_welcome(message):
         # Сохраняем заявку в базу
         application_id = save_application(user)
         
-        welcome_text = """
+        # Создаем пригласительную ссылку с предварительным одобрением
+        invite_link = create_invite_link()
+        
+        welcome_text = f"""
 🎉 Добро пожаловать в сеть ONIX!
 
-Присоединяйтесь к нашему каналу:
+Нажмите на ссылку ниже чтобы присоединиться к каналу:
+{invite_link}
 """
         
-        # Создаем кнопку с ссылкой на канал
-        markup = telebot.types.InlineKeyboardMarkup()
-        channel_btn = telebot.types.InlineKeyboardButton(
-            "📢 Перейти в канал ONIX", 
-            url=CHANNEL_INVITE_LINK
-        )
-        markup.add(channel_btn)
-        
-        bot.send_message(
-            message.chat.id, 
-            welcome_text, 
-            reply_markup=markup,
-            disable_web_page_preview=True
-        )
+        bot.send_message(message.chat.id, welcome_text)
         
         logger.info(f"📨 Приглашение отправлено пользователю {user.id}")
         
@@ -84,32 +75,63 @@ def handle_any_message(message):
         # Сохраняем заявку в базу
         application_id = save_application(user)
         
-        response_text = """
+        # Создаем пригласительную ссылку с предварительным одобрением
+        invite_link = create_invite_link()
+        
+        response_text = f"""
 🎉 Добро пожаловать в сеть ONIX!
 
-Присоединяйтесь к нашему каналу:
+Нажмите на ссылку ниже чтобы присоединиться к каналу:
+{invite_link}
 """
         
-        # Создаем кнопку с ссылкой на канал
-        markup = telebot.types.InlineKeyboardMarkup()
-        channel_btn = telebot.types.InlineKeyboardButton(
-            "📢 Перейти в канал ONIX", 
-            url=CHANNEL_INVITE_LINK
-        )
-        markup.add(channel_btn)
-        
-        bot.send_message(
-            message.chat.id, 
-            response_text, 
-            reply_markup=markup,
-            disable_web_page_preview=True
-        )
+        bot.send_message(message.chat.id, response_text)
         
         logger.info(f"📨 Приглашение отправлено пользователю {user.id}")
         
     except Exception as e:
         logger.error(f"❌ Ошибка в handle_any_message: {e}")
         bot.send_message(message.chat.id, "🎉 Добро пожаловать в сеть ONIX!")
+
+# Создание пригласительной ссылки с предварительным одобрением
+def create_invite_link():
+    try:
+        # Создаем ссылку с предварительным одобрением
+        invite_link = bot.create_chat_invite_link(
+            chat_id=CHANNEL_ID,
+            creates_join_request=True  # Запрос на вступление вместо прямой ссылки
+        )
+        return invite_link.invite_link
+    except Exception as e:
+        logger.error(f"❌ Ошибка создания invite link: {e}")
+        return "https://t.me/+_58D1Ea_0WxjZTYy"  # fallback ссылка
+
+# Обработчик запросов на вступление в канал
+@bot.chat_join_request_handler()
+def approve_join_request(chat_join_request):
+    try:
+        user = chat_join_request.from_user
+        chat = chat_join_request.chat
+        
+        # Автоматически одобряем заявку
+        bot.approve_chat_join_request(chat.id, user.id)
+        
+        # Сохраняем в базу
+        save_application(user)
+        
+        logger.info(f"✅ Заявка одобрена для пользователя {user.id} в канал {chat.id}")
+        
+        # Отправляем приветственное сообщение пользователю
+        welcome_dm = """
+🎉 Добро пожаловать в сеть ONIX!
+
+Ваша заявка одобрена автоматически.
+Теперь вы участник нашего канала!
+"""
+        bot.send_message(user.id, welcome_dm)
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка одобрения заявки: {e}")
 
 # Сохранение заявки в базу данных
 def save_application(user):
@@ -159,12 +181,13 @@ def health_check():
 @app.route('/debug')
 def debug_info():
     bot_token_set = bool(os.environ.get('BOT_TOKEN'))
+    channel_id_set = bool(CHANNEL_ID)
     
     return f"""
 🐛 ONIX Bot Debug:
 ✅ Server: Running
 🤖 Bot Token: {'✅ SET' if bot_token_set else '❌ MISSING'}
-📢 Channel Link: {CHANNEL_INVITE_LINK}
+📢 Channel ID: {'✅ SET' if channel_id_set else '❌ MISSING'}
 """
 
 @app.route('/webhook', methods=['POST'])
