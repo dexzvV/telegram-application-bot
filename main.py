@@ -68,11 +68,10 @@ def save_application(user):
 # Создание рабочей пригласительной ссылки
 def create_invite_link():
     try:
-        # Создаем новую пригласительную ссылку
+        # Создаем новую пригласительную ссылку БЕЗ member_limit
         invite_link = bot.create_chat_invite_link(
             chat_id=CHANNEL_ID,
-            member_limit=1,  # Одноразовая ссылка
-            creates_join_request=True  # Запрос на вступление
+            creates_join_request=True  # Только запрос на вступление
         )
         return invite_link.invite_link
     except Exception as e:
@@ -121,7 +120,7 @@ def send_welcome(message):
             reply_markup=markup
         )
         
-        logger.info(f"📨 Ссылка отправлена пользователю {user.id}: {invite_link}")
+        logger.info(f"📨 Ссылка отправлена пользователю {user.id}")
         
     except Exception as e:
         logger.error(f"❌ Ошибка в send_welcome: {e}")
