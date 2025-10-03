@@ -65,7 +65,20 @@ def save_application(user):
         logger.error(f"❌ Ошибка сохранения заявки: {e}")
         return False
 
-# Команда /start - отправляет инструкцию
+# Создание правильной ссылки для заявок
+def create_join_link():
+    try:
+        # Создаем ссылку специально для заявок на вступление
+        invite_link = bot.create_chat_invite_link(
+            chat_id=CHANNEL_ID,
+            creates_join_request=True
+        )
+        return invite_link.invite_link
+    except Exception as e:
+        logger.error(f"❌ Ошибка создания ссылки: {e}")
+        return None
+
+# Команда /start - создает и отправляет ссылку для заявок
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     try:
@@ -73,8 +86,15 @@ def send_welcome(message):
         
         # Если уже подавал заявку - не отвечаем
         if has_user_applied(user.id):
-            logger.info(f"🔇 Пользователь {user.id} уже получал инструкцию - игнорируем")
+            logger.info(f"🔇 Пользователь {user.id} уже получал ссылку - игнорируем")
             return
+        
+        # Создаем ссылку для заявок
+        join_link = create_join_link()
+        
+        if not join_link:
+            # Если не удалось создать ссылку, используем публичную ссылку
+            join_link = f"https://t.me/{CHANNEL_ID.replace('-100', '')}" if CHANNEL_ID else "https://t.me/onix_network"
         
         # Сохраняем информацию о заявке
         save_application(user)
@@ -82,18 +102,25 @@ def send_welcome(message):
         welcome_text = """
 🎉 Добро пожаловать в сеть ONIX!
 
-Чтобы вступить в канал:
-
-1. Перейдите в наш канал: @onix_network
-2. Нажмите кнопку "Вступить" / "Join"
-3. Отправьте заявку на вступление
-4. Бот автоматически примет вас в течение 1-2 секунд!
-
-После одобрения заявки вы получите уведомление.
+Нажмите на ссылку ниже чтобы подать заявку на вступление.
+Бот автоматически примет вас в канал!
 """
         
-        bot.send_message(message.chat.id, welcome_text)
-        logger.info(f"📨 Инструкция отправлена пользователю {user.id}")
+        # Создаем кнопку со ссылкой
+        markup = telebot.types.InlineKeyboardMarkup()
+        channel_btn = telebot.types.InlineKeyboardButton(
+            "📢 Подать заявку в ONIX", 
+            url=join_link
+        )
+        markup.add(channel_btn)
+        
+        bot.send_message(
+            message.chat.id, 
+            welcome_text, 
+            reply_markup=markup
+        )
+        
+        logger.info(f"📨 Ссылка отправлена пользователю {user.id}: {join_link}")
         
     except Exception as e:
         logger.error(f"❌ Ошибка в send_welcome: {e}")
@@ -128,12 +155,12 @@ def handle_other_messages(message):
     try:
         user = message.from_user
         
-        # Если уже получал инструкцию - не отвечаем
+        # Если уже получал ссылку - не отвечаем
         if has_user_applied(user.id):
             return
         
         # Перенаправляем на /start
-        bot.send_message(message.chat.id, "Отправьте команду /start чтобы получить инструкцию")
+        bot.send_message(message.chat.id, "Отправьте команду /start чтобы получить ссылку")
         
     except Exception as e:
         logger.error(f"❌ Ошибка в handle_other_messages: {e}")
