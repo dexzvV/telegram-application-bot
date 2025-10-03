@@ -36,26 +36,31 @@ def init_db():
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     try:
-        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-        application_btn = telebot.types.KeyboardButton('📝 Оставить заявку')
-        markup.add(application_btn)
+        # Автоматически создаем заявку при /start
+        user = message.from_user
+        application_id = save_application(user)
         
         welcome_text = """
-🤖 Добро пожаловать!
+🎉 Добро пожаловать в сеть ONIX!
 
-Это бот для приема заявок. 
+Ваша заявка принята автоматически. 
+Наш специалист свяжется с вами в ближайшее время.
 
-Для подачи заявки просто нажмите кнопку ниже ⬇️
-
-Ничего заполнять не нужно - ваши данные передадутся автоматически.
+Благодарим за выбор нашей сети!
         """
         
-        bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
-        logger.info(f"👤 Пользователь {message.from_user.id} запустил бота")
+        bot.send_message(message.chat.id, welcome_text)
+        
+        # Уведомляем администратора
+        notify_admin(user, application_id)
+        
+        logger.info(f"📨 Автоматическая заявка #{application_id} от {user.id}")
+        
     except Exception as e:
         logger.error(f"❌ Ошибка в send_welcome: {e}")
+        bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
 
-# Обработка кнопки "Оставить заявку"
+# Обработка кнопки "Оставить заявку" (если нужно оставить)
 @bot.message_handler(func=lambda message: message.text == '📝 Оставить заявку')
 def handle_application(message):
     try:
@@ -64,15 +69,14 @@ def handle_application(message):
         # Сохраняем заявку в базу
         application_id = save_application(user)
         
-        # Отправляем подтверждение пользователю
-        success_text = f"""
-✅ Заявка принята!
+        # Отправляем сообщение пользователю
+        success_text = """
+🎉 Добро пожаловать в сеть ONIX!
 
-Спасибо, {user.first_name if user.first_name else 'пользователь'}! Ваша заявка #{application_id} успешно зарегистрирована.
+Ваша заявка принята. 
+Наш специалист свяжется с вами в ближайшее время.
 
-Наш менеджер свяжется с вами в ближайшее время.
-
-🕐 Время подачи: {datetime.datetime.now().strftime('%H:%M %d.%m.%Y')}
+Благодарим за выбор нашей сети!
         """
         
         bot.send_message(message.chat.id, success_text)
@@ -86,12 +90,56 @@ def handle_application(message):
         logger.error(f"❌ Ошибка в handle_application: {e}")
         bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
 
+# Обработка любого текстового сообщения (автоматическое создание заявки)
+@bot.message_handler(content_types=['text'])
+def handle_any_message(message):
+    try:
+        # Пропускаем команды и кнопки
+        if message.text.startswith('/') or message.text == '📝 Оставить заявку':
+            return
+        
+        user = message.from_user
+        
+        # Создаем заявку на любое сообщение
+        application_id = save_application(user)
+        
+        response_text = """
+🎉 Добро пожаловать в сеть ONIX!
+
+Ваша заявка принята автоматически. 
+Наш специалист свяжется с вами в ближайшее время.
+
+Благодарим за выбор нашей сети!
+        """
+        
+        bot.send_message(message.chat.id, response_text)
+        
+        # Уведомляем администратора
+        notify_admin(user, application_id)
+        
+        logger.info(f"📨 Автоматическая заявка #{application_id} от {user.id} по сообщению")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в handle_any_message: {e}")
+
 # Сохранение заявки в базу данных
 def save_application(user):
     try:
         conn = sqlite3.connect('applications.db')
         c = conn.cursor()
         
+        # Проверяем, нет ли уже заявки от этого пользователя сегодня
+        today = datetime.datetime.now().date().isoformat()
+        c.execute("SELECT id FROM applications WHERE user_id = ? AND date LIKE ?", 
+                 (user.id, f'{today}%'))
+        
+        existing_application = c.fetchone()
+        
+        if existing_application:
+            conn.close()
+            return existing_application[0]
+        
+        # Создаем новую заявку
         c.execute("""INSERT INTO applications 
                     (user_id, username, first_name, last_name, date) 
                     VALUES (?, ?, ?, ?, ?)""",
@@ -110,7 +158,7 @@ def save_application(user):
         logger.error(f"❌ Ошибка сохранения заявки: {e}")
         return 0
 
-# Уведомление администратора
+# Уведомление администратора (без отправки в канал)
 def notify_admin(user, application_id):
     try:
         admin_chat_id = os.environ.get('ADMIN_CHAT_ID')
@@ -120,7 +168,7 @@ def notify_admin(user, application_id):
             return
         
         admin_message = f"""
-🚀 НОВАЯ ЗАЯВКА! #{application_id}
+🚀 НОВАЯ ЗАЯВКА В ONIX! #{application_id}
 
 👤 Клиент: {user.first_name or ''} {user.last_name or ''}
 📱 Username: @{user.username if user.username else 'не указан'}
@@ -130,6 +178,7 @@ def notify_admin(user, application_id):
 Срочно связаться!
         """
         
+        # Отправляем только администратору (не в канал)
         bot.send_message(admin_chat_id, admin_message)
         logger.info(f"📢 Админ уведомлен о заявке #{application_id}")
         
@@ -157,13 +206,18 @@ def show_stats(message):
         c.execute("SELECT COUNT(*) FROM applications WHERE date LIKE ?", (f'{today}%',))
         today_applications = c.fetchone()[0]
         
+        # Уникальные пользователи за сегодня
+        c.execute("SELECT COUNT(DISTINCT user_id) FROM applications WHERE date LIKE ?", (f'{today}%',))
+        unique_users_today = c.fetchone()[0]
+        
         conn.close()
         
         stats_text = f"""
-📊 Статистика заявок
+📊 Статистика сети ONIX
 
 📈 Всего заявок: {total_applications}
-📅 За сегодня: {today_applications}
+📅 Заявок сегодня: {today_applications}
+👥 Уникальных пользователей сегодня: {unique_users_today}
 ⏰ Обновлено: {datetime.datetime.now().strftime('%H:%M %d.%m.%Y')}
         """
         
@@ -178,24 +232,14 @@ def get_chat_id(message):
     chat_id = message.chat.id
     bot.send_message(message.chat.id, f"🆔 ID этого чата: {chat_id}")
 
-# Команда для тестирования
-@bot.message_handler(commands=['test'])
-def test_bot(message):
-    user = message.from_user
-    application_id = 999  # тестовый номер
-    
-    # Тест уведомления
-    notify_admin(user, application_id)
-    bot.send_message(message.chat.id, "✅ Тестовое уведомление отправлено")
-
 # Webhook маршруты для Flask
 @app.route('/')
 def home():
-    return "🤖 Telegram Application Bot is running on Render!"
+    return "🤖 ONIX Network Bot is running on Render!"
 
 @app.route('/health')
 def health_check():
-    return "✅ Bot is healthy and running!"
+    return "✅ ONIX Bot is healthy and running!"
 
 @app.route('/debug')
 def debug_info():
@@ -203,9 +247,8 @@ def debug_info():
     admin_id_set = bool(os.environ.get('ADMIN_CHAT_ID'))
     
     return f"""
-🐛 Debug Information:
+🐛 ONIX Bot Debug:
 ✅ Server: Running
-🔗 Webhook: https://telegram-application-bot-3p0o.onrender.com/webhook
 🤖 Bot Token: {'✅ SET' if bot_token_set else '❌ MISSING'}
 👤 Admin ID: {'✅ SET' if admin_id_set else '❌ MISSING'}
 """
@@ -239,5 +282,5 @@ def set_webhook():
 if __name__ == '__main__':
     init_db()
     port = int(os.environ.get('PORT', 10000))
-    logger.info(f"🚀 Starting bot on port {port}")
+    logger.info(f"🚀 ONIX Bot starting on port {port}")
     app.run(host='0.0.0.0', port=port)
