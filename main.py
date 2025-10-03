@@ -14,7 +14,7 @@ bot = telebot.TeleBot(os.environ['BOT_TOKEN'])
 app = Flask(__name__)
 
 # ФИКСИРОВАННАЯ пригласительная ссылка (создать в настройках канала)
-FIXED_INVITE_LINK = "https://t.me/+SuiqfrQqf0I2MGVi"  # ЗАМЕНИТЕ на реальную ссылку
+FIXED_INVITE_LINK = "https://t.me/+87yO5xDdEUw2NWNi"  # ЗАМЕНИТЕ на реальную ссылку
 
 # Инициализация базы данных для отслеживания заявок
 def init_db():
