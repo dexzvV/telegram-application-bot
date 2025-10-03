@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 bot = telebot.TeleBot(os.environ['BOT_TOKEN'])
 app = Flask(__name__)
 
-# ID канала (нужно заменить на реальный)
-CHANNEL_ID = os.environ.get('CHANNEL_ID', '-1001234567890')
+# ФИКСИРОВАННАЯ пригласительная ссылка (создать в настройках канала)
+FIXED_INVITE_LINK = "https://t.me/+SuiqfrQqf0I2MGVi"  # ЗАМЕНИТЕ на реальную ссылку
 
 # Инициализация базы данных для отслеживания заявок
 def init_db():
@@ -65,20 +65,7 @@ def save_application(user):
         logger.error(f"❌ Ошибка сохранения заявки: {e}")
         return False
 
-# Создание рабочей пригласительной ссылки
-def create_invite_link():
-    try:
-        # Создаем новую пригласительную ссылку БЕЗ member_limit
-        invite_link = bot.create_chat_invite_link(
-            chat_id=CHANNEL_ID,
-            creates_join_request=True  # Только запрос на вступление
-        )
-        return invite_link.invite_link
-    except Exception as e:
-        logger.error(f"❌ Ошибка создания ссылки: {e}")
-        return None
-
-# Команда /start - создает и отправляет рабочую ссылку
+# Команда /start - отправляет фиксированную ссылку
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     try:
@@ -87,13 +74,6 @@ def send_welcome(message):
         # Если уже подавал заявку - не отвечаем
         if has_user_applied(user.id):
             logger.info(f"🔇 Пользователь {user.id} уже получал ссылку - игнорируем")
-            return
-        
-        # Создаем рабочую ссылку
-        invite_link = create_invite_link()
-        
-        if not invite_link:
-            bot.send_message(message.chat.id, "❌ Ошибка создания ссылки. Попробуйте позже.")
             return
         
         # Сохраняем информацию о заявке
@@ -106,11 +86,11 @@ def send_welcome(message):
 Бот автоматически примет вас в канал!
 """
         
-        # Создаем кнопку с ссылкой
+        # Создаем кнопку с фиксированной ссылкой
         markup = telebot.types.InlineKeyboardMarkup()
         channel_btn = telebot.types.InlineKeyboardButton(
             "📢 Подать заявку в ONIX", 
-            url=invite_link
+            url=FIXED_INVITE_LINK
         )
         markup.add(channel_btn)
         
@@ -172,13 +152,12 @@ def health_check():
 @app.route('/debug')
 def debug_info():
     bot_token_set = bool(os.environ.get('BOT_TOKEN'))
-    channel_id_set = bool(CHANNEL_ID)
     
     return f"""
 🐛 ONIX Bot Debug:
 ✅ Server: Running
 🤖 Bot Token: {'✅ SET' if bot_token_set else '❌ MISSING'}
-📢 Channel ID: {'✅ SET' if channel_id_set else '❌ MISSING'}
+📢 Fixed Link: {FIXED_INVITE_LINK}
 ✅ Auto-approve: Enabled
 """
 
