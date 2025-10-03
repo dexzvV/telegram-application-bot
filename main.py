@@ -65,7 +65,7 @@ def save_application(user):
         logger.error(f"❌ Ошибка сохранения заявки: {e}")
         return False
 
-# Команда /start - показывает кнопку только если еще не подавал заявку
+# Команда /start - сразу дает ссылку только один раз
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     try:
@@ -73,53 +73,17 @@ def send_welcome(message):
         
         # Если уже подавал заявку - не отвечаем
         if has_user_applied(user.id):
-            logger.info(f"🔇 Пользователь {user.id} уже подавал заявку - игнорируем")
-            return
-        
-        welcome_text = """
-🎉 Добро пожаловать в сеть ONIX!
-
-Нажмите кнопку ниже чтобы подать заявку на вступление в канал.
-Бот автоматически примет вашу заявку!
-
-⚠️ Заявку можно подать только один раз.
-"""
-        
-        # Создаем клавиатуру с кнопкой "Подать заявку"
-        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-        application_btn = telebot.types.KeyboardButton('📝 Подать заявку')
-        markup.add(application_btn)
-        
-        bot.send_message(
-            message.chat.id, 
-            welcome_text, 
-            reply_markup=markup
-        )
-        
-        logger.info(f"👤 Пользователь {user.id} запустил бота")
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка в send_welcome: {e}")
-
-# Обработка кнопки "Подать заявку" - только один раз
-@bot.message_handler(func=lambda message: message.text == '📝 Подать заявку')
-def handle_application(message):
-    try:
-        user = message.from_user
-        
-        # Если уже подавал заявку - не отвечаем
-        if has_user_applied(user.id):
-            logger.info(f"🔇 Пользователь {user.id} уже подавал заявку - игнорируем")
+            logger.info(f"🔇 Пользователь {user.id} уже получал ссылку - игнорируем")
             return
         
         # Сохраняем информацию о заявке
         save_application(user)
         
-        success_text = """
-✅ Заявка принята!
+        welcome_text = """
+🎉 Добро пожаловать в сеть ONIX!
 
-Теперь нажмите на ссылку ниже чтобы вступить в канал ONIX.
-Бот автоматически примет вашу заявку в течение 1-2 секунд!
+Нажмите на ссылку ниже чтобы вступить в канал.
+Бот автоматически примет вашу заявку!
 """
         
         # Создаем кнопку с фиксированной ссылкой на канал
@@ -130,26 +94,16 @@ def handle_application(message):
         )
         markup.add(channel_btn)
         
-        # Убираем клавиатуру с кнопкой "Подать заявку"
-        remove_markup = telebot.types.ReplyKeyboardRemove()
-        
         bot.send_message(
             message.chat.id, 
-            success_text, 
-            reply_markup=remove_markup
-        )
-        
-        # Отправляем кнопку с ссылкой
-        bot.send_message(
-            message.chat.id,
-            "Нажмите на кнопку ниже:",
+            welcome_text, 
             reply_markup=markup
         )
         
-        logger.info(f"📨 Заявка сохранена для пользователя {user.id}")
+        logger.info(f"📨 Ссылка отправлена пользователю {user.id}")
         
     except Exception as e:
-        logger.error(f"❌ Ошибка в handle_application: {e}")
+        logger.error(f"❌ Ошибка в send_welcome: {e}")
 
 # Обработчик заявок на вступление в канал
 @bot.chat_join_request_handler()
@@ -166,40 +120,42 @@ def approve_join_request(chat_join_request):
     except Exception as e:
         logger.error(f"❌ Ошибка одобрения заявки: {e}")
 
-# Обработка других текстовых сообщений - игнорируем если уже подавал заявку
-@bot.message_handler(content_types=['text'])
+# Обработка других сообщений - игнорируем
+@bot.message_handler(content_types=['text', 'photo', 'video', 'document'])
 def handle_other_messages(message):
     try:
         user = message.from_user
         
-        # Пропускаем команды
-        if message.text.startswith('/'):
-            return
-        
-        # Если уже подавал заявку - не отвечаем
+        # Если уже получал ссылку - не отвечаем
         if has_user_applied(user.id):
-            logger.info(f"🔇 Пользователь {user.id} уже подавал заявку - игнорируем")
             return
         
-        # Если пользователь пишет что-то кроме кнопки, показываем инструкцию
-        instruction_text = """
-ℹ️ Для подачи заявки в канал ONIX нажмите кнопку "📝 Подать заявку"
+        # Если первый раз пишет не /start, все равно даем ссылку
+        welcome_text = """
+🎉 Добро пожаловать в сеть ONIX!
 
-Если кнопка не видна, отправьте команду /start
-
-⚠️ Заявку можно подать только один раз.
+Нажмите на ссылку ниже чтобы вступить в канал.
+Бот автоматически примет вашу заявку!
 """
         
-        # Создаем клавиатуру с кнопкой "Подать заявку"
-        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-        application_btn = telebot.types.KeyboardButton('📝 Подать заявку')
-        markup.add(application_btn)
+        # Создаем кнопку с фиксированной ссылкой на канал
+        markup = telebot.types.InlineKeyboardMarkup()
+        channel_btn = telebot.types.InlineKeyboardButton(
+            "📢 Вступить в ONIX", 
+            url=CHANNEL_INVITE_LINK
+        )
+        markup.add(channel_btn)
+        
+        # Сохраняем информацию о заявке
+        save_application(user)
         
         bot.send_message(
             message.chat.id, 
-            instruction_text, 
+            welcome_text, 
             reply_markup=markup
         )
+        
+        logger.info(f"📨 Ссылка отправлена пользователю {user.id} по сообщению")
         
     except Exception as e:
         logger.error(f"❌ Ошибка в handle_other_messages: {e}")
@@ -223,8 +179,7 @@ def debug_info():
 🤖 Bot Token: {'✅ SET' if bot_token_set else '❌ MISSING'}
 📢 Channel Link: {CHANNEL_INVITE_LINK}
 ✅ Auto-approve: Enabled
-✅ One-time application: Enabled
-🔇 No repeat messages: Enabled
+✅ One-time link: Enabled
 """
 
 @app.route('/webhook', methods=['POST'])
