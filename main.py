@@ -28,9 +28,9 @@ def init_db():
                      status TEXT DEFAULT 'new')''')
         conn.commit()
         conn.close()
-        logger.info("Database initialized successfully")
+        logger.info("✅ База данных инициализирована")
     except Exception as e:
-        logger.error(f"Database initialization error: {e}")
+        logger.error(f"❌ Ошибка базы данных: {e}")
 
 # Команда /start
 @bot.message_handler(commands=['start'])
@@ -51,9 +51,9 @@ def send_welcome(message):
         """
         
         bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode='Markdown')
-        logger.info(f"User {message.from_user.id} started the bot")
+        logger.info(f"👤 Пользователь {message.from_user.id} запустил бота")
     except Exception as e:
-        logger.error(f"Error in send_welcome: {e}")
+        logger.error(f"❌ Ошибка в send_welcome: {e}")
 
 # Обработка кнопки "Оставить заявку"
 @bot.message_handler(func=lambda message: message.text == '📝 Оставить заявку')
@@ -70,7 +70,7 @@ def handle_application(message):
 
 Спасибо, {user.first_name if user.first_name else 'пользователь'}! Ваша заявка *#{application_id}* успешно зарегистрирована.
 
-Наш менеджер свяжется с вами в ближайшее время для уточнения деталей.
+Наш менеджер свяжется с вами в ближайшее время.
 
 🕐 *Время подачи:* {datetime.datetime.now().strftime('%H:%M %d.%m.%Y')}
         """
@@ -80,11 +80,11 @@ def handle_application(message):
         # Уведомляем администратора
         notify_admin(user, application_id)
         
-        logger.info(f"New application #{application_id} from user {user.id}")
+        logger.info(f"📨 Новая заявка #{application_id} от пользователя {user.id}")
         
     except Exception as e:
-        logger.error(f"Error in handle_application: {e}")
-        bot.send_message(message.chat.id, "❌ Произошла ошибка при отправке заявки. Попробуйте позже.")
+        logger.error(f"❌ Ошибка в handle_application: {e}")
+        bot.send_message(message.chat.id, "❌ Произошла ошибка. Попробуйте позже.")
 
 # Сохранение заявки в базу данных
 def save_application(user):
@@ -107,7 +107,7 @@ def save_application(user):
         
         return application_id
     except Exception as e:
-        logger.error(f"Error saving application: {e}")
+        logger.error(f"❌ Ошибка сохранения заявки: {e}")
         return 0
 
 # Уведомление администратора
@@ -116,7 +116,7 @@ def notify_admin(user, application_id):
         admin_chat_id = os.environ.get('ADMIN_CHAT_ID')
         
         if not admin_chat_id:
-            logger.warning("ADMIN_CHAT_ID not set")
+            logger.warning("⚠️ ADMIN_CHAT_ID не установлен")
             return
         
         admin_message = f"""
@@ -131,10 +131,10 @@ def notify_admin(user, application_id):
         """
         
         bot.send_message(admin_chat_id, admin_message, parse_mode='Markdown')
-        logger.info(f"Admin notified about application #{application_id}")
+        logger.info(f"📢 Админ уведомлен о заявке #{application_id}")
         
     except Exception as e:
-        logger.error(f"Error notifying admin: {e}")
+        logger.error(f"❌ Ошибка уведомления админа: {e}")
 
 # Команда для администратора - статистика
 @bot.message_handler(commands=['stats'])
@@ -170,12 +170,12 @@ def show_stats(message):
         bot.send_message(message.chat.id, stats_text, parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Error in show_stats: {e}")
+        logger.error(f"❌ Ошибка в show_stats: {e}")
 
 # Webhook маршруты для Flask
 @app.route('/')
 def home():
-    return "🤖 Telegram Application Bot is running!"
+    return "🤖 Telegram Application Bot is running on Render!"
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -190,20 +190,21 @@ def webhook():
 @app.route('/set_webhook', methods=['GET'])
 def set_webhook():
     try:
-        # Получаем домен из переменной окружения
-        railway_url = os.environ.get('RAILWAY_STATIC_URL', '')
-        if not railway_url:
-            return "RAILWAY_STATIC_URL not set"
+        # Получаем домен из переменной окружения Render
+        render_url = os.environ.get('RENDER_EXTERNAL_URL', '')
+        if not render_url:
+            return "RENDER_EXTERNAL_URL not set"
         
-        webhook_url = f"https://{railway_url}/webhook"
+        webhook_url = f"{render_url}/webhook"
         bot.remove_webhook()
         bot.set_webhook(url=webhook_url)
-        return f"Webhook set to: {webhook_url}"
+        return f"✅ Webhook установлен: {webhook_url}"
     except Exception as e:
-        return f"Error setting webhook: {e}"
+        return f"❌ Ошибка установки webhook: {e}"
 
 # Инициализация при запуске
 if __name__ == '__main__':
     init_db()
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 10000))
+    logger.info(f"🚀 Starting bot on port {port}")
     app.run(host='0.0.0.0', port=port)
