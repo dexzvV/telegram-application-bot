@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 bot = telebot.TeleBot(os.environ['BOT_TOKEN'])
 app = Flask(__name__)
 
-# ID канала куда добавлять пользователей (начинается с -100)
-CHANNEL_ID = os.environ.get('CHANNEL_ID')  # Например: -1001234567890
+# Пригласительная ссылка на канал
+CHANNEL_INVITE_LINK = "https://t.me/+_58D1Ea_0WxjZTYy"
 
 # Инициализация базы данных
 def init_db():
@@ -44,13 +44,28 @@ def send_welcome(message):
         # Сохраняем заявку в базу
         application_id = save_application(user)
         
-        # Добавляем пользователя в канал
-        add_user_to_channel(user)
+        welcome_text = """
+🎉 Добро пожаловать в сеть ONIX!
+
+Присоединяйтесь к нашему каналу:
+"""
         
-        welcome_text = "🎉 Добро пожаловать в сеть ONIX!"
+        # Создаем кнопку с ссылкой на канал
+        markup = telebot.types.InlineKeyboardMarkup()
+        channel_btn = telebot.types.InlineKeyboardButton(
+            "📢 Перейти в канал ONIX", 
+            url=CHANNEL_INVITE_LINK
+        )
+        markup.add(channel_btn)
         
-        bot.send_message(message.chat.id, welcome_text)
-        logger.info(f"📨 Пользователь {user.id} добавлен в канал")
+        bot.send_message(
+            message.chat.id, 
+            welcome_text, 
+            reply_markup=markup,
+            disable_web_page_preview=True
+        )
+        
+        logger.info(f"📨 Приглашение отправлено пользователю {user.id}")
         
     except Exception as e:
         logger.error(f"❌ Ошибка в send_welcome: {e}")
@@ -69,33 +84,32 @@ def handle_any_message(message):
         # Сохраняем заявку в базу
         application_id = save_application(user)
         
-        # Добавляем пользователя в канал
-        add_user_to_channel(user)
+        response_text = """
+🎉 Добро пожаловать в сеть ONIX!
+
+Присоединяйтесь к нашему каналу:
+"""
         
-        response_text = "🎉 Добро пожаловать в сеть ONIX!"
+        # Создаем кнопку с ссылкой на канал
+        markup = telebot.types.InlineKeyboardMarkup()
+        channel_btn = telebot.types.InlineKeyboardButton(
+            "📢 Перейти в канал ONIX", 
+            url=CHANNEL_INVITE_LINK
+        )
+        markup.add(channel_btn)
         
-        bot.send_message(message.chat.id, response_text)
-        logger.info(f"📨 Пользователь {user.id} добавлен в канал по сообщению")
+        bot.send_message(
+            message.chat.id, 
+            response_text, 
+            reply_markup=markup,
+            disable_web_page_preview=True
+        )
+        
+        logger.info(f"📨 Приглашение отправлено пользователю {user.id}")
         
     except Exception as e:
         logger.error(f"❌ Ошибка в handle_any_message: {e}")
         bot.send_message(message.chat.id, "🎉 Добро пожаловать в сеть ONIX!")
-
-# Добавление пользователя в канал
-def add_user_to_channel(user):
-    try:
-        if not CHANNEL_ID:
-            logger.warning("⚠️ CHANNEL_ID не установлен")
-            return False
-        
-        # Пытаемся добавить пользователя в канал
-        bot.approve_chat_join_request(CHANNEL_ID, user.id)
-        logger.info(f"✅ Пользователь {user.id} добавлен в канал {CHANNEL_ID}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка добавления в канал: {e}")
-        return False
 
 # Сохранение заявки в базу данных
 def save_application(user):
@@ -145,13 +159,12 @@ def health_check():
 @app.route('/debug')
 def debug_info():
     bot_token_set = bool(os.environ.get('BOT_TOKEN'))
-    channel_id_set = bool(os.environ.get('CHANNEL_ID'))
     
     return f"""
 🐛 ONIX Bot Debug:
 ✅ Server: Running
 🤖 Bot Token: {'✅ SET' if bot_token_set else '❌ MISSING'}
-📢 Channel ID: {'✅ SET' if channel_id_set else '❌ MISSING'}
+📢 Channel Link: {CHANNEL_INVITE_LINK}
 """
 
 @app.route('/webhook', methods=['POST'])
