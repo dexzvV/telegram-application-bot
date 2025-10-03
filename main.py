@@ -1,8 +1,6 @@
 import os
 import telebot
 from flask import Flask, request
-import sqlite3
-import datetime
 import logging
 
 # Настройка логирования
@@ -13,92 +11,13 @@ logger = logging.getLogger(__name__)
 bot = telebot.TeleBot(os.environ['BOT_TOKEN'])
 app = Flask(__name__)
 
-# ID канала (обязательно!)
-CHANNEL_ID = os.environ.get('CHANNEL_ID')
+# Фиксированная ссылка на канал
+CHANNEL_INVITE_LINK = "https://t.me/+87yO5xDdEUw2NWNi"
 
-# Инициализация базы данных для отслеживания заявок
-def init_db():
-    try:
-        conn = sqlite3.connect('applications.db')
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS user_applications
-                    (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                     user_id INTEGER UNIQUE,
-                     username TEXT,
-                     first_name TEXT,
-                     date TEXT)''')
-        conn.commit()
-        conn.close()
-        logger.info("✅ База данных инициализирована")
-    except Exception as e:
-        logger.error(f"❌ Ошибка базы данных: {e}")
-
-# Проверка, подавал ли пользователь уже заявку
-def has_user_applied(user_id):
-    try:
-        conn = sqlite3.connect('applications.db')
-        c = conn.cursor()
-        c.execute("SELECT user_id FROM user_applications WHERE user_id = ?", (user_id,))
-        result = c.fetchone()
-        conn.close()
-        return result is not None
-    except Exception as e:
-        logger.error(f"❌ Ошибка проверки заявки: {e}")
-        return False
-
-# Сохранение информации о подаче заявки
-def save_application(user):
-    try:
-        conn = sqlite3.connect('applications.db')
-        c = conn.cursor()
-        c.execute("""INSERT OR REPLACE INTO user_applications 
-                    (user_id, username, first_name, date) 
-                    VALUES (?, ?, ?, ?)""",
-                (user.id, 
-                 user.username, 
-                 user.first_name,
-                 datetime.datetime.now().isoformat()))
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        logger.error(f"❌ Ошибка сохранения заявки: {e}")
-        return False
-
-# Создание правильной ссылки для заявок
-def create_join_link():
-    try:
-        # Создаем ссылку специально для заявок на вступление
-        invite_link = bot.create_chat_invite_link(
-            chat_id=CHANNEL_ID,
-            creates_join_request=True
-        )
-        return invite_link.invite_link
-    except Exception as e:
-        logger.error(f"❌ Ошибка создания ссылки: {e}")
-        return None
-
-# Команда /start - создает и отправляет ссылку для заявок
+# Команда /start - отправляет ссылку
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     try:
-        user = message.from_user
-        
-        # Если уже подавал заявку - не отвечаем
-        if has_user_applied(user.id):
-            logger.info(f"🔇 Пользователь {user.id} уже получал ссылку - игнорируем")
-            return
-        
-        # Создаем ссылку для заявок
-        join_link = create_join_link()
-        
-        if not join_link:
-            # Если не удалось создать ссылку, используем публичную ссылку
-            join_link = f"https://t.me/{CHANNEL_ID.replace('-100', '')}" if CHANNEL_ID else "https://t.me/onix_network"
-        
-        # Сохраняем информацию о заявке
-        save_application(user)
-        
         welcome_text = """
 🎉 Добро пожаловать в сеть ONIX!
 
@@ -110,7 +29,7 @@ def send_welcome(message):
         markup = telebot.types.InlineKeyboardMarkup()
         channel_btn = telebot.types.InlineKeyboardButton(
             "📢 Подать заявку в ONIX", 
-            url=join_link
+            url=CHANNEL_INVITE_LINK
         )
         markup.add(channel_btn)
         
@@ -120,50 +39,58 @@ def send_welcome(message):
             reply_markup=markup
         )
         
-        logger.info(f"📨 Ссылка отправлена пользователю {user.id}: {join_link}")
+        logger.info(f"📨 Ссылка отправлена пользователю {message.from_user.id}")
         
     except Exception as e:
         logger.error(f"❌ Ошибка в send_welcome: {e}")
+
+# Обработка любых сообщений - всегда отправляем ссылку
+@bot.message_handler(content_types=['text', 'photo', 'video', 'document'])
+def handle_all_messages(message):
+    try:
+        # Пропускаем команды (чтобы /start не дублировался)
+        if message.text and message.text.startswith('/'):
+            return
+            
+        welcome_text = """
+🎉 Добро пожаловать в сеть ONIX!
+
+Нажмите на ссылку ниже чтобы подать заявку на вступление.
+Бот автоматически примет вас в канал!
+"""
+        
+        # Создаем кнопку со ссылкой
+        markup = telebot.types.InlineKeyboardMarkup()
+        channel_btn = telebot.types.InlineKeyboardButton(
+            "📢 Подать заявку в ONIX", 
+            url=CHANNEL_INVITE_LINK
+        )
+        markup.add(channel_btn)
+        
+        bot.send_message(
+            message.chat.id, 
+            welcome_text, 
+            reply_markup=markup
+        )
+        
+        logger.info(f"📨 Ссылка отправлена пользователю {message.from_user.id} по сообщению")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка в handle_all_messages: {e}")
 
 # Обработчик заявок на вступление в канал
 @bot.chat_join_request_handler()
 def approve_join_request(chat_join_request):
     try:
         user = chat_join_request.from_user
-        chat = chat_join_request.chat
         
         # Автоматически одобряем заявку
-        bot.approve_chat_join_request(chat.id, user.id)
+        bot.approve_chat_join_request(chat_join_request.chat.id, user.id)
         
         logger.info(f"✅ Заявка одобрена для пользователя {user.id}")
         
-        # Отправляем приветствие
-        welcome_dm = """
-🎉 Поздравляем! Ваша заявка одобрена!
-
-Теперь вы участник канала ONIX.
-Добро пожаловать в нашу сеть!
-"""
-        bot.send_message(user.id, welcome_dm)
-        
     except Exception as e:
         logger.error(f"❌ Ошибка одобрения заявки: {e}")
-
-# Обработка других сообщений - игнорируем
-@bot.message_handler(content_types=['text', 'photo', 'video', 'document'])
-def handle_other_messages(message):
-    try:
-        user = message.from_user
-        
-        # Если уже получал ссылку - не отвечаем
-        if has_user_applied(user.id):
-            return
-        
-        # Перенаправляем на /start
-        bot.send_message(message.chat.id, "Отправьте команду /start чтобы получить ссылку")
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка в handle_other_messages: {e}")
 
 # Webhook маршруты для Flask
 @app.route('/')
@@ -177,14 +104,14 @@ def health_check():
 @app.route('/debug')
 def debug_info():
     bot_token_set = bool(os.environ.get('BOT_TOKEN'))
-    channel_id_set = bool(CHANNEL_ID)
     
     return f"""
 🐛 ONIX Bot Debug:
 ✅ Server: Running
 🤖 Bot Token: {'✅ SET' if bot_token_set else '❌ MISSING'}
-📢 Channel ID: {'✅ SET' if channel_id_set else '❌ MISSING'}
+📢 Channel Link: {CHANNEL_INVITE_LINK}
 ✅ Auto-approve: Enabled
+🔄 Unlimited requests: Enabled
 """
 
 @app.route('/webhook', methods=['POST'])
@@ -213,7 +140,6 @@ def set_webhook():
 
 # Инициализация при запуске
 if __name__ == '__main__':
-    init_db()
     port = int(os.environ.get('PORT', 10000))
     logger.info(f"🚀 ONIX Bot starting on port {port}")
     app.run(host='0.0.0.0', port=port)
