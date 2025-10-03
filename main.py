@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 bot = telebot.TeleBot(os.environ['BOT_TOKEN'])
 app = Flask(__name__)
 
-# ФИКСИРОВАННАЯ пригласительная ссылка (создать в настройках канала)
-FIXED_INVITE_LINK = "https://t.me/+87yO5xDdEUw2NWNi"  # ЗАМЕНИТЕ на реальную ссылку
+# ID канала (обязательно!)
+CHANNEL_ID = os.environ.get('CHANNEL_ID')
 
 # Инициализация базы данных для отслеживания заявок
 def init_db():
@@ -65,7 +65,7 @@ def save_application(user):
         logger.error(f"❌ Ошибка сохранения заявки: {e}")
         return False
 
-# Команда /start - отправляет фиксированную ссылку
+# Команда /start - отправляет инструкцию
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     try:
@@ -73,7 +73,7 @@ def send_welcome(message):
         
         # Если уже подавал заявку - не отвечаем
         if has_user_applied(user.id):
-            logger.info(f"🔇 Пользователь {user.id} уже получал ссылку - игнорируем")
+            logger.info(f"🔇 Пользователь {user.id} уже получал инструкцию - игнорируем")
             return
         
         # Сохраняем информацию о заявке
@@ -82,25 +82,18 @@ def send_welcome(message):
         welcome_text = """
 🎉 Добро пожаловать в сеть ONIX!
 
-Нажмите на ссылку ниже чтобы подать заявку.
-Бот автоматически примет вас в канал!
+Чтобы вступить в канал:
+
+1. Перейдите в наш канал: @onix_network
+2. Нажмите кнопку "Вступить" / "Join"
+3. Отправьте заявку на вступление
+4. Бот автоматически примет вас в течение 1-2 секунд!
+
+После одобрения заявки вы получите уведомление.
 """
         
-        # Создаем кнопку с фиксированной ссылкой
-        markup = telebot.types.InlineKeyboardMarkup()
-        channel_btn = telebot.types.InlineKeyboardButton(
-            "📢 Подать заявку в ONIX", 
-            url=FIXED_INVITE_LINK
-        )
-        markup.add(channel_btn)
-        
-        bot.send_message(
-            message.chat.id, 
-            welcome_text, 
-            reply_markup=markup
-        )
-        
-        logger.info(f"📨 Ссылка отправлена пользователю {user.id}")
+        bot.send_message(message.chat.id, welcome_text)
+        logger.info(f"📨 Инструкция отправлена пользователю {user.id}")
         
     except Exception as e:
         logger.error(f"❌ Ошибка в send_welcome: {e}")
@@ -118,7 +111,12 @@ def approve_join_request(chat_join_request):
         logger.info(f"✅ Заявка одобрена для пользователя {user.id}")
         
         # Отправляем приветствие
-        welcome_dm = "🎉 Поздравляем! Ваша заявка одобрена! Добро пожаловать в ONIX!"
+        welcome_dm = """
+🎉 Поздравляем! Ваша заявка одобрена!
+
+Теперь вы участник канала ONIX.
+Добро пожаловать в нашу сеть!
+"""
         bot.send_message(user.id, welcome_dm)
         
     except Exception as e:
@@ -130,12 +128,12 @@ def handle_other_messages(message):
     try:
         user = message.from_user
         
-        # Если уже получал ссылку - не отвечаем
+        # Если уже получал инструкцию - не отвечаем
         if has_user_applied(user.id):
             return
         
         # Перенаправляем на /start
-        bot.send_message(message.chat.id, "Отправьте команду /start чтобы получить ссылку")
+        bot.send_message(message.chat.id, "Отправьте команду /start чтобы получить инструкцию")
         
     except Exception as e:
         logger.error(f"❌ Ошибка в handle_other_messages: {e}")
@@ -152,12 +150,13 @@ def health_check():
 @app.route('/debug')
 def debug_info():
     bot_token_set = bool(os.environ.get('BOT_TOKEN'))
+    channel_id_set = bool(CHANNEL_ID)
     
     return f"""
 🐛 ONIX Bot Debug:
 ✅ Server: Running
 🤖 Bot Token: {'✅ SET' if bot_token_set else '❌ MISSING'}
-📢 Fixed Link: {FIXED_INVITE_LINK}
+📢 Channel ID: {'✅ SET' if channel_id_set else '❌ MISSING'}
 ✅ Auto-approve: Enabled
 """
 
